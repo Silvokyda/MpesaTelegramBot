@@ -134,13 +134,16 @@ def mpesa_callback():
     return "OK"
 
 def main():
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    # Initialize Flask app and start it
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
+    # Initialize Telegram bot and add handlers
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
     start_handler = CommandHandler('start', start)
     pay_handler = CommandHandler('pay', pay)
     help_handler = CommandHandler('help', help_command)
     message_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
-
     application.add_handler(start_handler)
     application.add_handler(pay_handler)
     application.add_handler(help_handler)
@@ -151,6 +154,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    logger.info("Starting Flask server...")
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
