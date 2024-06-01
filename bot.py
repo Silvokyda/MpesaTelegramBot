@@ -6,6 +6,8 @@ from telegram import Update, Bot, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 import requests
 from dotenv import load_dotenv
+import asyncio
+import threading
 
 # Load environment variables
 load_dotenv()
@@ -47,7 +49,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("Please enter the phone number and amount in the format: /pay <phone_number> <amount>")
+    try:
+        phone_number = update.message.text.split()[1]
+        amount = update.message.text.split()[2]
+        chat_id = update.message.chat_id
+        request_id = initiate_mpesa_payment(phone_number, amount)
+        if request_id:
+            payment_requests[request_id] = chat_id
+            await update.message.reply_text("Payment initiated successfully. You will receive a prompt on your phone.")
+        else:
+            await update.message.reply_text("Failed to initiate payment. Please try again.")
+    except IndexError:
+        await update.message.reply_text("Please provide the phone number and amount. Usage: /pay <phone_number> <amount>")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
@@ -62,6 +75,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await help_command(update, context)
     else:
         await update.message.reply_text("Invalid option. Please choose from the menu.")
+
+def telegram_bot_worker():
+    # Create a new event loop for the thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
+
+    start_handler = CommandHandler('start', start)
+    pay_handler = CommandHandler('pay', pay)
+    help_handler = CommandHandler('help', help_command)
+    message_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+
+    application.add_handler(start_handler)
+    application.add_handler(pay_handler)
+    application.add_handler(help_handler)
+    application.add_handler(message_handler)
+
+    logger.info("Starting Telegram bot...")
+    loop.run_until_complete(application.run_polling())
+
+
 
 def initiate_mpesa_payment(phone_number: str, amount: str) -> str:
     access_token = get_mpesa_access_token()
@@ -114,6 +149,10 @@ def get_timestamp() -> str:
     from datetime import datetime
     return datetime.now().strftime('%Y%m%d%H%M%S')
 
+@app.route('/', methods=['GET'])
+def defaultRoute():
+    return 'Hello, world!'
+
 @app.route('/mpesa/callback', methods=['POST'])
 def mpesa_callback():
     data = request.json
@@ -133,29 +172,14 @@ def mpesa_callback():
 
     return "OK"
 
-
-@app.route('/', methods=['GET'])
-def defaultRoute():
-    return 'Hello, world!'
-
 def main():
-    # Initialize Flask app and start it
+    # Initialize Telegram bot and add handlers
+    telegram_bot_thread = threading.Thread(target=telegram_bot_worker)
+    telegram_bot_thread.start()
+
+    # Start Flask app
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-    # Initialize Telegram bot and add handlers
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
-    start_handler = CommandHandler('start', start)
-    pay_handler = CommandHandler('pay', pay)
-    help_handler = CommandHandler('help', help_command)
-    message_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
-    application.add_handler(start_handler)
-    application.add_handler(pay_handler)
-    application.add_handler(help_handler)
-    application.add_handler(message_handler)
-
-    logger.info("Starting Telegram bot...")
-    application.run_polling()
 
 if __name__ == '__main__':
     main()
