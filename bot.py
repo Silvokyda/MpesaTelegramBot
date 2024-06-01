@@ -4,32 +4,21 @@ import logging
 from flask import Flask, request
 from telegram import Update, Bot, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-import requests
 from dotenv import load_dotenv
 import asyncio
 import threading
+from mpesa import initiate_mpesa_payment
 
-# Load environment variables
-load_dotenv()
-
-# Environment variables
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-MPESA_CONSUMER_KEY = os.getenv("MPESA_CONSUMER_KEY")
-MPESA_CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET")
-MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE")
-MPESA_PASSKEY = os.getenv("MPESA_PASSKEY")
-CALLBACK_URL = os.getenv("CALLBACK_URL")
-
-# Initialize Flask app
 app = Flask(__name__)
 
-# Configure logging
+load_dotenv()
+
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 
-# Telegram bot initialization
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 bot = Bot(token=TELEGRAM_TOKEN)
 
 # Dictionary to store payment requests
@@ -77,7 +66,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("Invalid option. Please choose from the menu.")
 
 def telegram_bot_worker():
-    # Create a new event loop for the thread
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -95,59 +83,6 @@ def telegram_bot_worker():
 
     logger.info("Starting Telegram bot...")
     loop.run_until_complete(application.run_polling())
-
-
-
-def initiate_mpesa_payment(phone_number: str, amount: str) -> str:
-    access_token = get_mpesa_access_token()
-    if not access_token:
-        logger.error("Failed to obtain MPESA access token.")
-        return None
-
-    url = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    payload = {
-        "BusinessShortCode": MPESA_SHORTCODE,
-        "Password": generate_password(),
-        "Timestamp": get_timestamp(),
-        "TransactionType": "CustomerPayBillOnline",
-        "Amount": amount,
-        "PartyA": phone_number,
-        "PartyB": MPESA_SHORTCODE,
-        "PhoneNumber": phone_number,
-        "CallBackURL": CALLBACK_URL,
-        "AccountReference": "Test123",
-        "TransactionDesc": "Payment for goods"
-    }
-
-    response = requests.post(url, json=payload, headers=headers)
-    if response.status_code == 200:
-        logger.info("MPESA payment request initiated successfully.")
-        return response.json().get("CheckoutRequestID")
-    else:
-        logger.error(f"MPESA payment request failed: {response.text}")
-        return None
-
-def get_mpesa_access_token() -> str:
-    url = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-    response = requests.get(url, auth=(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET))
-    if response.status_code == 200:
-        logger.info("MPESA access token obtained successfully.")
-        return response.json().get("access_token")
-    logger.error(f"Failed to obtain MPESA access token: {response.text}")
-    return None
-
-def generate_password() -> str:
-    from base64 import b64encode
-    from datetime import datetime
-    timestamp = get_timestamp()
-    password_str = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
-    password = b64encode(password_str.encode()).decode('utf-8')
-    return password
-
-def get_timestamp() -> str:
-    from datetime import datetime
-    return datetime.now().strftime('%Y%m%d%H%M%S')
 
 @app.route('/', methods=['GET'])
 def defaultRoute():
@@ -169,7 +104,6 @@ def mpesa_callback():
         if chat_id:
             bot.send_message(chat_id, "Payment was successful. Thank you for your purchase!")
             del payment_requests[checkout_request_id]
-
     return "OK"
 
 def main():
