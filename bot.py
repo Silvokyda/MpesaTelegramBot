@@ -1,15 +1,11 @@
 import os
 import json
 import logging
-from flask import Flask, request
 from telegram import Update, Bot, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from dotenv import load_dotenv
 import asyncio
-import threading
 from mpesa import initiate_mpesa_payment
-
-app = Flask(__name__)
 
 load_dotenv()
 
@@ -65,7 +61,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     else:
         await update.message.reply_text("Invalid option. Please choose from the menu.")
 
-def telegram_bot_worker():
+def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -83,37 +79,6 @@ def telegram_bot_worker():
 
     logger.info("Starting Telegram bot...")
     loop.run_until_complete(application.run_polling())
-
-@app.route('/', methods=['GET'])
-def defaultRoute():
-    return 'Hello, world!'
-
-@app.route('/mpesa/callback', methods=['POST'])
-def mpesa_callback():
-    data = request.json
-    logger.info(f"MPESA callback received: {json.dumps(data)}")
-
-    # Extract relevant information from the callback
-    callback_data = data.get("Body", {}).get("stkCallback", {})
-    result_code = callback_data.get("ResultCode")
-    checkout_request_id = callback_data.get("CheckoutRequestID")
-
-    # Notify user if payment was successful
-    if result_code == 0:
-        chat_id = payment_requests.get(checkout_request_id)
-        if chat_id:
-            bot.send_message(chat_id, "Payment was successful. Thank you for your purchase!")
-            del payment_requests[checkout_request_id]
-    return "OK"
-
-def main():
-    # Initialize Telegram bot and add handlers
-    telegram_bot_thread = threading.Thread(target=telegram_bot_worker)
-    telegram_bot_thread.start()
-
-    # Start Flask app
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
 
 if __name__ == '__main__':
     main()
