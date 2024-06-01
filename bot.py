@@ -133,6 +133,11 @@ def mpesa_callback():
 
     return "OK"
 
+
+@app.route('/', methods=['GET'])
+def defaultRoute():
+    return 'Hello, world!'
+
 def main():
     # Initialize Flask app and start it
     port = int(os.environ.get("PORT", 5000))
